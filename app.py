@@ -3,11 +3,32 @@ import tempfile
 import os
 from staircase import convert
 
-st.set_page_config(page_title="Map Art Staircaser", page_icon="🗺️")
+st.set_page_config(page_title="Map Art Staircaser", page_icon="🗺️", layout="wide")
 st.title("🗺️ Map Art Staircase Converter")
 st.write("Upload flat carpet map art → download staircased version")
 st.write("Supported formats: `.nbt`, `.schem`, `.litematic`, `.schematic`")
 st.info("⚠️ Already staircased files will be detected and skipped automatically.")
+
+# Make the drag-and-drop area much bigger
+st.markdown("""
+<style>
+    [data-testid="stUploadDropzoneInput"] {
+        min-height: 400px !important;
+    }
+    [data-testid="stFileUploadDropzone"] {
+        min-height: 400px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    [data-testid="stFileUploadDropzone"] div {
+        font-size: 1.3rem !important;
+    }
+    [data-testid="stFileUploadDropzone"] small {
+        font-size: 1rem !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 uploaded = st.file_uploader(
     "Upload your flat map art file",
