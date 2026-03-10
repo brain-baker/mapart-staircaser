@@ -7,6 +7,7 @@ st.set_page_config(page_title="Map Art Staircaser", page_icon="🗺️")
 st.title("🗺️ Map Art Staircase Converter")
 st.write("Upload flat carpet map art → download staircased version")
 st.write("Supported formats: `.nbt`, `.schem`, `.litematic`, `.schematic`")
+st.info("⚠️ Already staircased files will be detected and skipped automatically.")
 
 uploaded = st.file_uploader(
     "Upload your flat map art file",
@@ -32,6 +33,11 @@ if uploaded:
                 f.read(),
                 out_name
             )
+    except ValueError as e:
+        if "already staircased" in str(e).lower():
+            st.warning(f"⚠️ {e}")
+        else:
+            st.error(f"❌ {e}")
     except Exception as e:
         st.error(f"❌ Error: {e}")
     finally:
