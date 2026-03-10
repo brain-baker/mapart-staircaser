@@ -6,7 +6,7 @@ import io
 from staircase import convert
 
 st.set_page_config(page_title="Map Art Staircaser", page_icon="🗺️", layout="wide")
-st.title("🗺️ Map Art Staircase Converter")
+st.title("🗺️ Carpet Maparts Fixer")
 st.write("Upload flat carpet map art → download staircased version")
 st.write("Supported formats: `.nbt`, `.schem`, `.litematic`, `.schematic`")
 st.info("⚠️ Already staircased files will be detected and skipped automatically.")
