@@ -29,6 +29,29 @@ st.markdown("""
         font-size: 1rem !important;
     }
 </style>
+
+<div class="easter-egg">KT & Proe are gay for each other.</div>
+<style>
+    .easter-egg {
+        position: fixed;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 40px;
+        height: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: transparent;
+        font-size: 0.9rem;
+        user-select: none;
+        z-index: 9999;
+        transition: color 0.3s ease;
+    }
+    .easter-egg:hover {
+        color: white;
+    }
+</style>
 """, unsafe_allow_html=True)
 
 uploaded_files = st.file_uploader(
