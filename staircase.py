@@ -41,6 +41,18 @@ def build_palette(carpets):
     return pal
 
 
+def check_already_staircased(carpet_ys):
+    """Returns True if carpets are at varying Y levels (already staircased)."""
+    if not carpet_ys:
+        return False
+    y_values = set(carpet_ys.values())
+    # If all carpets are on the same Y level, it's flat
+    # If Y values span more than 1 level, it's already staircased
+    return (max(y_values) - min(y_values)) > 1
+
+
+# ========================= .nbt =========================
+
 def read_nbt(path):
     import nbtlib
     f = nbtlib.load(path)
@@ -52,14 +64,16 @@ def read_nbt(path):
         pos = tuple(int(p) for p in b['pos'])
         block_map[pos] = int(b['state'])
     carpets = {}
+    carpet_ys = {}
     for x in range(W):
         for z in range(L):
             for y in range(H - 1, -1, -1):
                 state = block_map.get((x, y, z))
                 if state is not None and id2name.get(state, "") in CARPETS:
                     carpets[(x, z)] = id2name[state]
+                    carpet_ys[(x, z)] = y
                     break
-    return W, L, carpets, f.get('DataVersion', nbtlib.Int(3465))
+    return W, L, carpets, carpet_ys, f.get('DataVersion', nbtlib.Int(3465))
 
 
 def save_nbt(path, W, L, carpets, pal, dv):
@@ -87,6 +101,8 @@ def save_nbt(path, W, L, carpets, pal, dv):
         'entities': List[Compound](),
     }), gzipped=True).save(path)
 
+
+# ========================= .schem =========================
 
 def _decode_varints(raw, count):
     out, i = [], 0
@@ -124,14 +140,16 @@ def read_schem(path):
     id2name = {int(v): str(k) for k, v in pal_tag.items()}
     blocks = _decode_varints(bd_tag, W * H * L)
     carpets = {}
+    carpet_ys = {}
     for x in range(W):
         for z in range(L):
             for y in range(H - 1, -1, -1):
                 name = id2name.get(blocks[(y * L + z) * W + x], "minecraft:air")
                 if name in CARPETS:
                     carpets[(x, z)] = name
+                    carpet_ys[(x, z)] = y
                     break
-    return W, L, carpets, root.get('DataVersion', nbtlib.Int(3465))
+    return W, L, carpets, carpet_ys, root.get('DataVersion', nbtlib.Int(3465))
 
 
 def save_schem(path, W, L, carpets, pal, dv):
@@ -154,6 +172,8 @@ def save_schem(path, W, L, carpets, pal, dv):
     }, gzipped=True).save(path)
 
 
+# ========================= .litematic =========================
+
 def read_litematic(path):
     from litemapy import Schematic
     schem = Schematic.load(path)
@@ -162,15 +182,17 @@ def read_litematic(path):
     min_x, min_z = min(xs), min(zs)
     W, L = len(xs), len(zs)
     carpets = {}
+    carpet_ys = {}
     for x in xs:
         for z in zs:
             for y in reversed(list(ys)):
                 block = reg.getblock(x, y, z)
                 if block.blockid in CARPETS:
                     carpets[(x - min_x, z - min_z)] = block.blockid
+                    carpet_ys[(x - min_x, z - min_z)] = y
                     break
     dv = getattr(schem, 'mc_data_version', 3465)
-    return W, L, carpets, dv
+    return W, L, carpets, carpet_ys, dv
 
 
 def save_litematic(path, W, L, carpets, pal, dv):
@@ -189,6 +211,8 @@ def save_litematic(path, W, L, carpets, pal, dv):
     schem.save(path)
 
 
+# ========================= .schematic (legacy) =========================
+
 def read_schematic(path):
     import nbtlib
     f = nbtlib.load(path)
@@ -197,14 +221,16 @@ def read_schematic(path):
     blocks = [b & 0xFF for b in root['Blocks']]
     data = [b & 0xFF for b in root['Data']]
     carpets = {}
+    carpet_ys = {}
     for x in range(W):
         for z in range(L):
             for y in range(H - 1, -1, -1):
                 idx = (y * L + z) * W + x
                 if blocks[idx] == 171:
                     carpets[(x, z)] = CARPET_DATA_TO_NAME.get(data[idx], "minecraft:white_carpet")
+                    carpet_ys[(x, z)] = y
                     break
-    return W, L, carpets, None
+    return W, L, carpets, carpet_ys, None
 
 
 def save_schematic(path, W, L, carpets, pal, dv):
@@ -230,6 +256,8 @@ def save_schematic(path, W, L, carpets, pal, dv):
     }), gzipped=True).save(path)
 
 
+# ========================= Main =========================
+
 READERS = {
     '.nbt': read_nbt,
     '.schem': read_schem,
@@ -251,9 +279,15 @@ def convert(inpath, outpath=None):
         outpath = f"{base}(fixed){ext}"
     if ext_l not in READERS:
         raise ValueError(f"Unsupported: {ext}. Use: {', '.join(READERS)}")
-    W, L, carpets, dv = READERS[ext_l](inpath)
+
+    W, L, carpets, carpet_ys, dv = READERS[ext_l](inpath)
+
     if not carpets:
         raise ValueError("No carpets found!")
+
+    if check_already_staircased(carpet_ys):
+        raise ValueError("This file is already staircased! Carpets are at different Y levels. Only flat map art needs conversion.")
+
     pal = build_palette(carpets)
     SAVERS[ext_l](outpath, W, L, carpets, pal, dv)
     return outpath, len(carpets)
