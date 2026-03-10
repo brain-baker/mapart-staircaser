@@ -30,7 +30,7 @@ st.markdown("""
     }
 </style>
 
-<div class="easter-egg">KT & Proe are gay for each other.</div>
+<div class="easter-egg">KT loves Proe. Proe loves Roblox.</div>
 <style>
     .easter-egg {
         position: fixed;
