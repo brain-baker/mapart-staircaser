@@ -1,5 +1,7 @@
+# staircase.py
 import sys
 import os
+import json
 
 CARPETS = {
     "minecraft:white_carpet", "minecraft:orange_carpet",
@@ -42,13 +44,20 @@ def build_palette(carpets):
 
 
 def check_already_staircased(carpet_ys):
-    """Returns True if carpets are at varying Y levels (already staircased)."""
     if not carpet_ys:
         return False
     y_values = set(carpet_ys.values())
-    # If all carpets are on the same Y level, it's flat
-    # If Y values span more than 1 level, it's already staircased
     return (max(y_values) - min(y_values)) > 1
+
+
+# --- NEW: converts carpet dict to JSON bytes for JsMacros script ---
+# carpet Y in staircase = get_step(x) + 1 (carpet sits on top of wool)
+def carpets_to_json(carpets):
+    blocks = []
+    for (x, z), cname in carpets.items():
+        step = get_step(x)
+        blocks.append({"x": x, "y": step + 1, "z": z, "carpet": cname})
+    return json.dumps(blocks).encode("utf-8")
 
 
 # ========================= .nbt =========================
@@ -272,6 +281,8 @@ SAVERS = {
 }
 
 
+# --- convert now returns (outpath, count, carpets) ---
+# carpets is the raw dict needed to generate JSON if user wants it
 def convert(inpath, outpath=None):
     base, ext = os.path.splitext(inpath)
     ext_l = ext.lower()
@@ -290,12 +301,12 @@ def convert(inpath, outpath=None):
 
     pal = build_palette(carpets)
     SAVERS[ext_l](outpath, W, L, carpets, pal, dv)
-    return outpath, len(carpets)
+    return outpath, len(carpets), carpets  # <-- carpets added to return
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print(f"Usage: python {sys.argv[0]} <input_file>")
         sys.exit(1)
-    outpath, count = convert(sys.argv[1])
+    outpath, count, _ = convert(sys.argv[1])
     print(f"Done! {count} carpets -> {outpath}")
