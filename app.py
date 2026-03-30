@@ -4,7 +4,7 @@ import tempfile
 import os
 import zipfile
 import io
-from staircase import convert, carpets_to_json
+from staircase import convert, carpets_to_json, extract_json_from_staircased
 
 st.set_page_config(page_title="Map Art Staircaser", page_icon="🗺️", layout="wide")
 st.title("🗺️ Carpet Maparts Fixer")
@@ -55,11 +55,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- optional JSON export checkbox ---
 export_json = st.checkbox(
-    "📄 Also export JSON for JsMacros mapart script",
+    "📄 Also export JSON",
     value=False,
-    help="Generates a .json file alongside the converted schematic. Drop it in schematics/Maparts/WIP/ with the schematic file."
+    help="Generates a .json alongside the schematic. For already-staircased files, exports JSON directly without converting."
 )
 
 uploaded_files = st.file_uploader(
@@ -69,31 +68,40 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    results = []   # (out_name, out_bytes, count, json_bytes_or_none)
-    skipped = []   # (filename, reason)
-    errors = []    # (filename, error)
+    results  = []  # (out_name, out_bytes, count, json_bytes_or_none)
+    skipped  = []  # (filename, reason, json_bytes_or_none)
+    errors   = []  # (filename, error)
 
     progress = st.progress(0, text="Converting...")
 
     for i, uploaded in enumerate(uploaded_files):
         base, ext = os.path.splitext(uploaded.name)
         out_name = f"{base}(fixed){ext}"
+        file_bytes = uploaded.read()
 
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_in:
-            tmp_in.write(uploaded.read())
+            tmp_in.write(file_bytes)
             in_path = tmp_in.name
 
         out_path = in_path + ".out" + ext
 
         try:
-            # convert() now returns 3 values — carpets used for JSON if needed
             _, count, carpets = convert(in_path, out_path)
             with open(out_path, 'rb') as f:
                 json_bytes = carpets_to_json(carpets) if export_json else None
                 results.append((out_name, f.read(), count, json_bytes))
+
         except ValueError as e:
             if "already staircased" in str(e).lower():
-                skipped.append((uploaded.name, str(e)))
+                # still extract JSON from the staircased file if checkbox is ticked
+                json_bytes = None
+                if export_json:
+                    try:
+                        json_bytes = extract_json_from_staircased(in_path)
+                    except Exception as je:
+                        json_bytes = None
+                        st.warning(f"⚠️ Could not extract JSON from **{uploaded.name}**: {je}")
+                skipped.append((uploaded.name, str(e), json_bytes))
             else:
                 errors.append((uploaded.name, str(e)))
         except Exception as e:
@@ -113,14 +121,24 @@ if uploaded_files:
 
     if results:
         st.success(f"✅ {len(results)} file(s) converted successfully!")
-    if skipped:
-        for name, reason in skipped:
-            st.warning(f"⚠️ **{name}** — {reason}")
+
+    # skipped files — show warning + JSON download button if available
+    for name, reason, json_bytes in skipped:
+        st.warning(f"⚠️ **{name}** — {reason}")
+        if json_bytes:
+            json_name = os.path.splitext(name)[0] + ".json"
+            st.download_button(
+                f"📄 Download {json_name} (JSON — extracted from existing staircase)",
+                json_bytes,
+                json_name,
+                key=f"skip_json_{name}"
+            )
+
     if errors:
         for name, err in errors:
             st.error(f"❌ **{name}** — {err}")
 
-    # single file
+    # single converted file
     if len(results) == 1:
         name, data, count, json_bytes = results[0]
         st.download_button(
@@ -128,16 +146,15 @@ if uploaded_files:
             data,
             name
         )
-        # show JSON download only if checkbox was ticked
         if json_bytes:
-            json_name = name.rsplit(".", 1)[0] + ".json"
+            json_name = os.path.splitext(name)[0] + ".json"
             st.download_button(
-                f"📄 Download {json_name} (JsMacros JSON)",
+                f"📄 Download {json_name} (JSON)",
                 json_bytes,
                 json_name
             )
 
-    # multiple files
+    # multiple converted files
     elif len(results) > 1:
         cols = st.columns(min(len(results), 4))
         for i, (name, data, count, json_bytes) in enumerate(results):
@@ -148,9 +165,8 @@ if uploaded_files:
                     name,
                     key=f"dl_{i}"
                 )
-                # JSON button per file if checkbox ticked
                 if json_bytes:
-                    json_name = name.rsplit(".", 1)[0] + ".json"
+                    json_name = os.path.splitext(name)[0] + ".json"
                     st.download_button(
                         f"📄 {json_name}",
                         json_bytes,
@@ -160,15 +176,12 @@ if uploaded_files:
 
         st.markdown("---")
 
-        # zip all schematics
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
             for name, data, _, json_bytes in results:
                 zf.writestr(name, data)
-                # include JSON files in zip too if checkbox ticked
                 if json_bytes:
-                    json_name = name.rsplit(".", 1)[0] + ".json"
-                    zf.writestr(json_name, json_bytes)
+                    zf.writestr(os.path.splitext(name)[0] + ".json", json_bytes)
         zip_buffer.seek(0)
 
         total_carpets = sum(c for _, _, c, _ in results)
