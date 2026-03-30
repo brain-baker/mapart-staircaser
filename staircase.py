@@ -50,13 +50,29 @@ def check_already_staircased(carpet_ys):
     return (max(y_values) - min(y_values)) > 1
 
 
-# --- NEW: converts carpet dict to JSON bytes for JsMacros script ---
-# carpet Y in staircase = get_step(x) + 1 (carpet sits on top of wool)
 def carpets_to_json(carpets):
+    # used for freshly converted files — Y is calculated from staircase formula
     blocks = []
     for (x, z), cname in carpets.items():
         step = get_step(x)
         blocks.append({"x": x, "y": step + 1, "z": z, "carpet": cname})
+    return json.dumps(blocks).encode("utf-8")
+
+
+# --- NEW: reads carpet positions AS-IS from an already-staircased file ---
+# uses actual Y values from the file instead of recalculating
+def extract_json_from_staircased(inpath):
+    base, ext = os.path.splitext(inpath)
+    ext_l = ext.lower()
+    if ext_l not in READERS:
+        raise ValueError(f"Unsupported: {ext}")
+    # read returns carpets={(x,z):name} and carpet_ys={(x,z):y}
+    _, _, carpets, carpet_ys, _ = READERS[ext_l](inpath)
+    if not carpets:
+        raise ValueError("No carpets found!")
+    blocks = []
+    for (x, z), cname in carpets.items():
+        blocks.append({"x": x, "y": carpet_ys[(x, z)], "z": z, "carpet": cname})
     return json.dumps(blocks).encode("utf-8")
 
 
@@ -281,8 +297,6 @@ SAVERS = {
 }
 
 
-# --- convert now returns (outpath, count, carpets) ---
-# carpets is the raw dict needed to generate JSON if user wants it
 def convert(inpath, outpath=None):
     base, ext = os.path.splitext(inpath)
     ext_l = ext.lower()
@@ -301,7 +315,7 @@ def convert(inpath, outpath=None):
 
     pal = build_palette(carpets)
     SAVERS[ext_l](outpath, W, L, carpets, pal, dv)
-    return outpath, len(carpets), carpets  # <-- carpets added to return
+    return outpath, len(carpets), carpets
 
 
 if __name__ == '__main__':
