@@ -1,9 +1,10 @@
+# app.py
 import streamlit as st
 import tempfile
 import os
 import zipfile
 import io
-from staircase import convert
+from staircase import convert, carpets_to_json
 
 st.set_page_config(page_title="Map Art Staircaser", page_icon="🗺️", layout="wide")
 st.title("🗺️ Carpet Maparts Fixer")
@@ -54,6 +55,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- optional JSON export checkbox ---
+export_json = st.checkbox(
+    "📄 Also export JSON for JsMacros mapart script",
+    value=False,
+    help="Generates a .json file alongside the converted schematic. Drop it in schematics/Maparts/WIP/ with the schematic file."
+)
+
 uploaded_files = st.file_uploader(
     "Upload your flat map art file(s)",
     type=["nbt", "schem", "litematic", "schematic"],
@@ -61,9 +69,9 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    results = []       # (out_name, out_bytes)
-    skipped = []       # (filename, reason)
-    errors = []        # (filename, error)
+    results = []   # (out_name, out_bytes, count, json_bytes_or_none)
+    skipped = []   # (filename, reason)
+    errors = []    # (filename, error)
 
     progress = st.progress(0, text="Converting...")
 
@@ -78,9 +86,11 @@ if uploaded_files:
         out_path = in_path + ".out" + ext
 
         try:
-            _, count = convert(in_path, out_path)
+            # convert() now returns 3 values — carpets used for JSON if needed
+            _, count, carpets = convert(in_path, out_path)
             with open(out_path, 'rb') as f:
-                results.append((out_name, f.read(), count))
+                json_bytes = carpets_to_json(carpets) if export_json else None
+                results.append((out_name, f.read(), count, json_bytes))
         except ValueError as e:
             if "already staircased" in str(e).lower():
                 skipped.append((uploaded.name, str(e)))
@@ -98,7 +108,6 @@ if uploaded_files:
 
     progress.empty()
 
-    # Summary
     st.markdown("---")
     st.subheader("Results")
 
@@ -111,20 +120,27 @@ if uploaded_files:
         for name, err in errors:
             st.error(f"❌ **{name}** — {err}")
 
-    # Single file → direct download
+    # single file
     if len(results) == 1:
-        name, data, count = results[0]
+        name, data, count, json_bytes = results[0]
         st.download_button(
             f"⬇️ Download {name} ({count} carpets)",
             data,
             name
         )
+        # show JSON download only if checkbox was ticked
+        if json_bytes:
+            json_name = name.rsplit(".", 1)[0] + ".json"
+            st.download_button(
+                f"📄 Download {json_name} (JsMacros JSON)",
+                json_bytes,
+                json_name
+            )
 
-    # Multiple files → individual downloads + zip
+    # multiple files
     elif len(results) > 1:
-        # Individual downloads
         cols = st.columns(min(len(results), 4))
-        for i, (name, data, count) in enumerate(results):
+        for i, (name, data, count, json_bytes) in enumerate(results):
             with cols[i % len(results)]:
                 st.download_button(
                     f"⬇️ {name}",
@@ -132,18 +148,31 @@ if uploaded_files:
                     name,
                     key=f"dl_{i}"
                 )
+                # JSON button per file if checkbox ticked
+                if json_bytes:
+                    json_name = name.rsplit(".", 1)[0] + ".json"
+                    st.download_button(
+                        f"📄 {json_name}",
+                        json_bytes,
+                        json_name,
+                        key=f"json_{i}"
+                    )
 
-        # Zip all
         st.markdown("---")
+
+        # zip all schematics
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for name, data, _ in results:
+            for name, data, _, json_bytes in results:
                 zf.writestr(name, data)
+                # include JSON files in zip too if checkbox ticked
+                if json_bytes:
+                    json_name = name.rsplit(".", 1)[0] + ".json"
+                    zf.writestr(json_name, json_bytes)
         zip_buffer.seek(0)
 
-        total_carpets = sum(c for _, _, c in results)
-        st.download_button(
-            f"📦 Download all {len(results)} files as ZIP ({total_carpets} total carpets)",
-            zip_buffer.getvalue(),
-            "staircased_maparts.zip"
-        )
+        total_carpets = sum(c for _, _, c, _ in results)
+        zip_label = f"📦 Download all {len(results)} files as ZIP ({total_carpets} total carpets)"
+        if export_json:
+            zip_label += " — includes JSON files"
+        st.download_button(zip_label, zip_buffer.getvalue(), "staircased_maparts.zip")
