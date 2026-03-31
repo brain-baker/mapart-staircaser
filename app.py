@@ -93,7 +93,6 @@ if uploaded_files:
 
         except ValueError as e:
             if "already staircased" in str(e).lower():
-                # still extract JSON from the staircased file if checkbox is ticked
                 json_bytes = None
                 if export_json:
                     try:
@@ -122,7 +121,7 @@ if uploaded_files:
     if results:
         st.success(f"✅ {len(results)} file(s) converted successfully!")
 
-    # skipped files — show warning + JSON download button if available
+    # ── skipped files ──
     for name, reason, json_bytes in skipped:
         st.warning(f"⚠️ **{name}** — {reason}")
         if json_bytes:
@@ -134,11 +133,12 @@ if uploaded_files:
                 key=f"skip_json_{name}"
             )
 
+    # ── errors ──
     if errors:
         for name, err in errors:
             st.error(f"❌ **{name}** — {err}")
 
-    # single converted file
+    # ── single converted file ──
     if len(results) == 1:
         name, data, count, json_bytes = results[0]
         st.download_button(
@@ -154,11 +154,35 @@ if uploaded_files:
                 json_name
             )
 
-    # multiple converted files
+    # ── multiple converted files ──
     elif len(results) > 1:
-        cols = st.columns(min(len(results), 4))
+        # --- ZIP download at the top for easy batch download ---
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for name, data, _, json_bytes in results:
+                zf.writestr(name, data)
+                if json_bytes:
+                    zf.writestr(os.path.splitext(name)[0] + ".json", json_bytes)
+        zip_buffer.seek(0)
+
+        total_carpets = sum(c for _, _, c, _ in results)
+        zip_label = f"📦 Download all {len(results)} files as ZIP ({total_carpets} total carpets)"
+        if export_json:
+            zip_label += " — includes JSON files"
+        st.download_button(
+            zip_label,
+            zip_buffer.getvalue(),
+            "staircased_maparts.zip",
+            key="zip_all"
+        )
+
+        st.markdown("---")
+
+        # --- Individual downloads in a grid ---
+        num_cols = min(len(results), 4)
+        cols = st.columns(num_cols)
         for i, (name, data, count, json_bytes) in enumerate(results):
-            with cols[i % len(results)]:
+            with cols[i % num_cols]:                          # ← FIXED: was `i % len(results)`
                 st.download_button(
                     f"⬇️ {name}",
                     data,
@@ -174,18 +198,18 @@ if uploaded_files:
                         key=f"json_{i}"
                     )
 
+    # ── ZIP for skipped files that have JSON ──
+    skipped_with_json = [(name, jb) for name, _, jb in skipped if jb]
+    if len(skipped_with_json) > 1:
         st.markdown("---")
-
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for name, data, _, json_bytes in results:
-                zf.writestr(name, data)
-                if json_bytes:
-                    zf.writestr(os.path.splitext(name)[0] + ".json", json_bytes)
-        zip_buffer.seek(0)
-
-        total_carpets = sum(c for _, _, c, _ in results)
-        zip_label = f"📦 Download all {len(results)} files as ZIP ({total_carpets} total carpets)"
-        if export_json:
-            zip_label += " — includes JSON files"
-        st.download_button(zip_label, zip_buffer.getvalue(), "staircased_maparts.zip")
+        skip_zip = io.BytesIO()
+        with zipfile.ZipFile(skip_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for name, jb in skipped_with_json:
+                zf.writestr(os.path.splitext(name)[0] + ".json", jb)
+        skip_zip.seek(0)
+        st.download_button(
+            f"📦 Download all {len(skipped_with_json)} skipped-file JSONs as ZIP",
+            skip_zip.getvalue(),
+            "skipped_jsons.zip",
+            key="zip_skipped_json"
+        )
